@@ -1,0 +1,79 @@
+# docker-compose.yml
+version: "3"
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.1
+    container_name: $ELASTIC_CONTAINER
+    restart: on-failure
+    environment:
+      ES_JAVA_OPTS: "-Xms512m -Xmx1024m"
+      MAX_MAP_COUNT: "64000"
+      discovery.type: "single-node"
+      cluster.name: "subsocial-cluster"
+      node.name: "subsocial-node"
+      http.port: "9200"
+      http.cors.enabled: "true"
+      http.cors.allow-credentials: "true"
+      http.cors.allow-origin: "*"
+      http.cors.allow-methods: "GET"
+      http.cors.allow-headers: "X-Requested-With,X-Auth-Token,Content-Type,Content-Length,Authorization,Access-Control-Allow-Headers,Accept"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    network_mode: "host"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "$ES_NODE_URL"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:12.4
+    container_name: $POSTGRES_CONTAINER
+    restart: on-failure
+    environment:
+      POSTGRES_DB: subsocial
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: 1986
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    network_mode: "host"
+
+## IPFS Cluster #################################
+#################################################
+
+  ipfs-node:
+    image: ipfs/go-ipfs:v0.5.1
+    container_name: $IPFS_NODE_CONTAINER
+    restart: on-failure
+    ports:
+      - "4001:4001"
+      - "5001:5001"
+      - "8080:8080"
+    volumes:
+      - ./ipfs-data/daemon/staging:/export
+      - ./ipfs-data/daemon/data:/data/ipfs
+
+  ipfs-cluster:
+    image: ipfs/ipfs-cluster:v0.13.0
+    container_name: $IPFS_CLUSTER_CONTAINER
+    depends_on:
+      - ipfs-node
+    environment:
+      CLUSTER_PEERNAME: "Subsocial Cluster"
+      CLUSTER_SECRET: ${CLUSTER_SECRET} # From shell variable if set
+      CLUSTER_IPFSHTTP_NODEMULTIADDRESS: /dns4/ipfs-node/tcp/5001
+      CLUSTER_CRDT_TRUSTERPEERS: '*' # Trust all peers in Cluster (initially)
+      CLUSTER_RESTAPI_CORSALLOWEDORIGINS: '*'
+      CLUSTER_RESTAPI_HTTPLISTENMULTIADDRESS: /ip4/0.0.0.0/tcp/9094 # Expose API
+      CLUSTER_MONITORPINGINTERVAL: 1s # Speed up peer discovery
+    ports:
+      - "9094:9094"
+    volumes:
+      - ./ipfs-data/cluster:/data/ipfs-cluster
+
+volumes:
+  es_data:
+  postgres_data:
+  peer_staging:
+  peer_data:
+  peer_cluster:
